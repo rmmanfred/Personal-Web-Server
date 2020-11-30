@@ -1,0 +1,14 @@
+*utilize the base code, can serve static files, parsing headers, curl, 
+client server logic
+*mim types, jansson for JSON, libjwt for JWT
+*look at http requests and responses
+* avoid .. or . requests
+* can use 1 thread per user for full performance
+* http stateless so very parallel
+* do not write forking, process based server
+* EPoll can be used to manage threadpool jobs?, look into FIRST
+* Also look at GNU AIO, not often used
+* Server must support ipv4 and 6
+* rlogin has dual binding, helps make v4 addresses into v6 
+(only have to look for v6)
+* 
