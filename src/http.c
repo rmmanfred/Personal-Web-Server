@@ -356,15 +356,11 @@ handle_api(struct http_transaction *ta)
         perror("jwt_encode_str"), exit(-1);
 
     //printf("encoded as %s\nTry entering this at jwt.io\n", encoded);
-<<<<<<< HEAD
-    http_add_header(&ta->resp_headers, "Set-Cookie", encoded);
-=======
     //printf("%s", encoded);
 
     http_add_header(&ta->resp_headers, "", encoded);
     //send_response_header(ta);
     //printf("This is encoded: %s", encoded);
->>>>>>> c3f2d3c09a71f485630388ca381d3bc701bdfed7
 
     ta->resp_status = HTTP_OK;
     
