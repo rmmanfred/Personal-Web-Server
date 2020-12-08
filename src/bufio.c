@@ -206,5 +206,6 @@ bufio_sendfile(struct bufio *self, int fd, off_t *off, int filesize)
 ssize_t 
 bufio_sendbuffer(struct bufio *self, buffer_t * resp)
 {
+    //printf("%s\n", resp->buf); //Ross added (12/8)
     return send(self->socket, resp->buf, resp->len, MSG_NOSIGNAL);
 }

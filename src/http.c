@@ -356,8 +356,7 @@ handle_api(struct http_transaction *ta)
         perror("jwt_encode_str"), exit(-1);
 
     //printf("encoded as %s\nTry entering this at jwt.io\n", encoded);
-
-    http_add_header(&ta->resp_headers, "", encoded);
+    http_add_header(&ta->resp_headers, "Set-Cookie", encoded);
 
     jwt_t *ymtoken;
     if (jwt_decode(&ymtoken, encoded, 
@@ -383,12 +382,6 @@ http_setup_client(struct http_client *self, struct bufio *bufio)
 }
 
 /* Handle a single HTTP transaction.  Returns true on success. */
-/******
- * We should create a loop that handles transactions until the header contains
- * a "Connection: close" call, then we return a message with "Connection: 
- * close" and we can end the connection
- * Maybe a different function?
- */
 bool
 http_handle_transaction(struct http_client *self)
 //http_handle_transaction(struct http_client *self, bool * dead)
