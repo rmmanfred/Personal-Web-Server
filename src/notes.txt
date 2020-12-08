@@ -1,7 +1,7 @@
-*utilize the base code, can serve static files, parsing headers, curl, 
+* utilize the base code, can serve static files, parsing headers, curl, 
 client server logic
-*mim types, jansson for JSON, libjwt for JWT
-*look at http requests and responses
+* mim types, jansson for JSON, libjwt for JWT
+* look at http requests and responses
 * avoid .. or . requests
 * can use 1 thread per user for full performance
 * http stateless so very parallel
@@ -11,4 +11,96 @@ client server logic
 * Server must support ipv4 and 6
 * rlogin has dual binding, helps make v4 addresses into v6 
 (only have to look for v6)
-* 
+* Have to implement TCP handshake?
+------------------------------------------------------------------
+
+HANDOUT
+* Top Level: personal web server w/ authentication API, persistent connections
+as HTTP/1.1 RFC 2616
+
+    File Serving
+* must support file serving from "root" specified by "/" URL
+* return content type header based on suffix, support at least
+html, js, css. /etc/mime.types has all
+* prevent usage of "../" to keep requests inside proper area
+* return error codes for unsupported URLs
+
+    Authentication
+* at least support one authenticated user with user and pass
+* authenticated users can access /private files
+* implement /api/login:
+    
+        POST REQUEST TARGET
+    * POST request must have {"username":"user0","password":"thepassword"},
+    correct request returns JSON describing claims client can use to prove it
+    is authorized (what?)
+    * Claim should at least have 
+    {"exp":1523737086,"iat":1523650686,"sub":"user0"}; sub- subject; iat- time
+    in seconds when claim made after Jan 1, 1970; exp- time claim will expire
+    * Return should also give signature from server (JWT) as a cookie if pass
+    correct
+        * HMAC or RSA for signing, use jansson and libjwt 
+        (see jwt_demo_hs256.c or rs256.c)
+        * Return 403 Forbidden if user or pass wrong
+    
+        GET REQUEST
+    * return claims client presented in request if auth, empty obj {} else
+    * validate tokens before determining auth (no expired or bad sign)
+        * should not store state just validate tokens
+        * No need to implement token revoke
+        * Read "Introduction to JWT" by Auth0
+    
+    Multiple Client Support
+* support multiple clients simultaneously w/o multiple processes
+* multi-thread or use event-based approach
+* may impose reasonable limit on number of simultaneous clients
+(thread limit from help session)
+
+    Robustness
+* "No error incurred handling a client's request should imepede ability to
+accept and handle future clients"
+* Even if indv send bad requests, crash, delay response, or violate HTTP
+
+    Protocol Independence
+* Must be able to accept IPv4 and 6 clients
+* Avoid dependence on a specific protocol, socket API supports multiple 
+protocol (bind and connect use struct sockaddr * can be either v4 or 6)
+* Should use getaddrinfo(3) or getnameinfo(3) func to translate from symbolic
+to addr and vice versa (avoid gethostbyname, getaddrbyname, 
+inet_ntoa, inet_ntop)
+** Tutorial on how to write such in resource and textbook, can adapt to 
+project
+* Linux uses dual bind allowing socket for IPv6 to accept IPv4 
+(/proc/sys/net/ipv6/bindv6only contains 0), may assume dual bind is on
+* Starter code uses protocol indep func but only tested to IPv4 
+(Augment to be indep)
+
+    Port Numbers
+* use ports 10,000 + pid of a team member
+* bind() fails with EADDRINUSE if port in use, check all processes used in 
+testing killed
+* port also has 2 min timeout if client used recently 
+(setsocketopt() w/ SO_REUSEADDR flag) to prevent
+
+    Strategy
+* Umderstand DNS host names, IP addresses, port numbers to TCP comm; roles of 
+socket API calls
+* Use thread safe versions of all functions
+* Look over wget and curl and flags for headers and protocol versions 
+(good for debugging)
+* Strace for debug, -s 1024 to avoid cutting off reads and writes, -f to 
+follow threads
+* Verify Content-Length comp correct issue body of each HTTP response in 
+sep system calls
+
+    Final
+* tar.gz with makefile
+* Cmd line args
+* -p port accept HTTP clients and serve HTTP requests on port "port"
+* -R path "path" specifies root directory
+* -s Silent, suppress stdout
+* -e sec Specify expiration time for JWT in "sec" seconds, enforce this 
+expiration time
+----------------------------------------------------------------------
+live demo:
+ssh -YC -L 10000:localhost:17617 #user

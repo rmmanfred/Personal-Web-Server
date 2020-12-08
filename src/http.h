@@ -50,10 +50,13 @@ struct http_transaction {
 
 struct http_client {
     struct bufio *bufio;
+    int socket;
 };
 
 void http_setup_client(struct http_client *, struct bufio *bufio);
 bool http_handle_transaction(struct http_client *);
+//bool http_handle_transaction(struct http_client *, bool *);
 void http_add_header(buffer_t * resp, char* key, char* fmt, ...);
+bool http_handle_client(struct http_client *);
 
 #endif /* _HTTP_H */

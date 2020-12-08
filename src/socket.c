@@ -54,6 +54,9 @@ socket_open_bind_listen(char * port_number_string, int backlog)
     }
 
     char printed_addr[1024];
+    //added functionality (12/5): uses a boolean to first search this list
+    //for IPv6, after pass made repeat and do IPv4
+    //bool dual = true;
     for (pinfo = info; pinfo; pinfo = pinfo->ai_next) {
         assert (pinfo->ai_protocol == IPPROTO_TCP);
         int rc = getnameinfo(pinfo->ai_addr, pinfo->ai_addrlen,
@@ -64,18 +67,18 @@ socket_open_bind_listen(char * port_number_string, int backlog)
             return -1;
         }
 
-        /* Uncomment this to see the address returned
+        // Uncomment this to see the address returned
         printf("%s: %s\n", pinfo->ai_family == AF_INET ? "AF_INET" :
                            pinfo->ai_family == AF_INET6 ? "AF_INET6" : "?", 
                            printed_addr);
-        */
+        //*/
 
-        /* Skip any non-IPv4 addresses.  
+        /* Skip any non-IPv6 addresses.  
          * Adding support for protocol independence/IPv6 is part of the project.
          */
-        if (pinfo->ai_family != AF_INET)
+        if (pinfo->ai_family != AF_INET6)
             continue;
-
+        //Comments by ross (12/3)
         int s = socket(pinfo->ai_family, pinfo->ai_socktype, pinfo->ai_protocol);
         if (s == -1) {
             perror("socket");
@@ -103,6 +106,52 @@ socket_open_bind_listen(char * port_number_string, int backlog)
         freeaddrinfo(info);
         return s;
     }
+
+    for (pinfo = info; pinfo; pinfo = pinfo->ai_next) {
+        assert (pinfo->ai_protocol == IPPROTO_TCP);
+        int rc = getnameinfo(pinfo->ai_addr, pinfo->ai_addrlen,
+                             printed_addr, sizeof printed_addr, NULL, 0,
+                             NI_NUMERICHOST);
+        if (rc != 0) {
+            fprintf(stderr, "getnameinfo error: %s\n", gai_strerror(rc));
+            return -1;
+        }
+
+        // Uncomment this to see the address returned
+        printf("%s: %s\n", pinfo->ai_family == AF_INET ? "AF_INET" :
+                           pinfo->ai_family == AF_INET6 ? "AF_INET6" : "?", 
+                           printed_addr);
+        //*/
+
+        //Comments by ross (12/3)
+        int s = socket(pinfo->ai_family, pinfo->ai_socktype, pinfo->ai_protocol);
+        if (s == -1) {
+            perror("socket");
+            return -1;
+        }
+
+        // See https://stackoverflow.com/a/3233022 for a good explanation of what this does
+        int opt = 1;
+        setsockopt (s, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof (opt));
+
+        rc = bind(s, pinfo->ai_addr, pinfo->ai_addrlen);
+        if (rc == -1) {
+            perror("bind");
+            close(s);
+            return -1;
+        }
+
+        rc = listen(s, backlog);
+        if (rc == -1) {
+            perror("listen");
+            close(s);
+            return -1;
+        }
+
+        freeaddrinfo(info);
+        return s;
+    }
+
     fprintf(stderr, "No suitable address to bind port %s found\n", port_number_string);
     return -1;
 }

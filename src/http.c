@@ -38,7 +38,10 @@ http_parse_request(struct http_transaction *ta)
     size_t req_offset;
     ssize_t len = bufio_readline(ta->client->bufio, &req_offset);
     if (len < 2)       // error, EOF, or less than 2 characters
+    {
+        printf("EOF\n"); //added by Ross (12/8)
         return false;
+    }
 
     char *request = bufio_offset2ptr(ta->client->bufio, req_offset);
     char *endptr;
@@ -76,6 +79,7 @@ http_parse_request(struct http_transaction *ta)
 /* Process HTTP headers. */
 static bool
 http_process_headers(struct http_transaction *ta)
+//http_process_headers(struct http_transaction *ta, bool * dead)
 {
     for (;;) {
         size_t header_offset;
@@ -99,13 +103,20 @@ http_process_headers(struct http_transaction *ta)
 
         if (field_name == NULL)
             return false;
-
-        // printf("Header: %s: %s\n", field_name, field_value);
+        //was commented line below
+         printf("Header: %s: %s\n", field_name, field_value);
         if (!strcasecmp(field_name, "Content-Length")) {
             ta->req_content_len = atoi(field_value);
         }
 
         /* Handle other headers here. */
+        //Check if connection should be closed
+        if (!strcasecmp(field_name, "Connection")) {
+            if (!strcasecmp(field_value, "close"))
+            {
+                //*dead = true;
+            }
+        }
     }
 }
 
@@ -141,7 +152,7 @@ add_content_length(buffer_t *res, size_t len)
 static void
 start_response(struct http_transaction * ta, buffer_t *res)
 {
-    buffer_appends(res, "HTTP/1.0 ");
+    buffer_appends(res, "HTTP/1.1 "); //Ross added (12/8)
 
     switch (ta->resp_status) {
     case HTTP_OK:
@@ -322,8 +333,15 @@ http_setup_client(struct http_client *self, struct bufio *bufio)
 }
 
 /* Handle a single HTTP transaction.  Returns true on success. */
+/******
+ * We should create a loop that handles transactions until the header contains
+ * a "Connection: close" call, then we return a message with "Connection: 
+ * close" and we can end the connection
+ * Maybe a different function?
+ */
 bool
 http_handle_transaction(struct http_client *self)
+//http_handle_transaction(struct http_client *self, bool * dead)
 {
     struct http_transaction ta;
     memset(&ta, 0, sizeof ta);
@@ -332,7 +350,7 @@ http_handle_transaction(struct http_client *self)
     if (!http_parse_request(&ta))
         return false;
 
-    if (!http_process_headers(&ta))
+    if (!http_process_headers(&ta)) //all calls to dead (12/6)********
         return false;
 
     if (ta.req_content_len > 0) {
@@ -341,8 +359,8 @@ http_handle_transaction(struct http_client *self)
             return false;
 
         // To see the body, use this:
-        // char *body = bufio_offset2ptr(ta.client->bufio, ta.req_body);
-        // hexdump(body, ta.req_content_len);
+         char *body = bufio_offset2ptr(ta.client->bufio, ta.req_body);
+         hexdump(body, ta.req_content_len);
     }
 
     buffer_init(&ta.resp_headers, 1024);
@@ -364,4 +382,22 @@ http_handle_transaction(struct http_client *self)
     buffer_delete(&ta.resp_body);
 
     return rc;
+}
+
+/**
+ * Keep client on the line and process transactions until connection closed
+ * Basically check until handle transaction returns false
+ */
+bool
+http_handle_client(struct http_client *self)
+{
+    for(;;)
+    {
+        bool dead = http_handle_transaction(self);
+        if (!dead)
+        {
+            break;
+        }
+    }
+    return true;
 }
