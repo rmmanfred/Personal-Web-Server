@@ -13,6 +13,8 @@
 #include <string.h>
 #include <stdarg.h>
 #include <stdio.h>
+#include <stdlib.h>
+#include <jwt.h>
 #include <stdbool.h>
 #include <errno.h>
 #include <unistd.h>
@@ -30,6 +32,8 @@
 #define CRLF "\r\n"
 #define STARTS_WITH(field_name, header) \
     (!strncasecmp(field_name, header, sizeof(header) - 1))
+
+static const char * NEVER_EMBED_A_SECRET_IN_CODE = "supa secret2";
 
 /* Parse HTTP request line, setting req_method, req_path, and req_version. */
 static bool
@@ -100,7 +104,7 @@ http_process_headers(struct http_transaction *ta)
         if (field_name == NULL)
             return false;
 
-        // printf("Header: %s: %s\n", field_name, field_value);
+        printf("Header: %s: %s\n", field_name, field_value);
         if (!strcasecmp(field_name, "Content-Length")) {
             ta->req_content_len = atoi(field_value);
         }
@@ -151,7 +155,7 @@ start_response(struct http_transaction * ta, buffer_t *res)
         buffer_appends(res, "400 Bad Request");
         break;
     case HTTP_PERMISSION_DENIED:
-        buffer_appends(res, "403 Permission Denied");
+        buffer_appends(res, "403 Forbidden");
         break;
     case HTTP_NOT_FOUND:
         buffer_appends(res, "404 Not Found");
@@ -262,6 +266,8 @@ guess_mime_type(char *filename)
     if (!strcasecmp(suffix, ".js"))
         return "text/javascript";
 
+    if (!strcasecmp(suffix, ".css"))
+        return "text/css";
     return "text/plain";
 }
 
@@ -311,7 +317,51 @@ out:
 static int
 handle_api(struct http_transaction *ta)
 {
-    return send_error(ta, HTTP_NOT_FOUND, "API not implemented");
+    jwt_t *mytoken;
+
+    if (jwt_new(&mytoken))
+        perror("jwt_new"), exit(-1);
+
+    if (jwt_add_grant(mytoken, "sub", "user0"))
+        perror("jwt_add_grant sub"), exit(-1);
+
+    time_t now = time(NULL);
+    if (jwt_add_grant_int(mytoken, "iat", now))
+        perror("jwt_add_grant iat"), exit(-1);
+
+    if (jwt_add_grant_int(mytoken, "exp", now + 3600 * 24))
+        perror("jwt_add_grant exp"), exit(-1);
+
+    if (jwt_set_alg(mytoken, JWT_ALG_HS256, 
+            (unsigned char *)NEVER_EMBED_A_SECRET_IN_CODE, strlen(NEVER_EMBED_A_SECRET_IN_CODE)))
+        perror("jwt_set_alg"), exit(-1);
+
+    //printf("dump:\n");
+    if (jwt_dump_fp(mytoken, stdout, 1))
+        perror("jwt_dump_fp"), exit(-1);
+
+    char *encoded = jwt_encode_str(mytoken);
+    if (encoded == NULL)
+        perror("jwt_encode_str"), exit(-1);
+
+    //printf("encoded as %s\nTry entering this at jwt.io\n", encoded);
+
+    http_add_header(&ta->resp_headers, "", encoded);
+
+    jwt_t *ymtoken;
+    if (jwt_decode(&ymtoken, encoded, 
+            (unsigned char *)NEVER_EMBED_A_SECRET_IN_CODE, strlen(NEVER_EMBED_A_SECRET_IN_CODE)))
+        perror("jwt_decode"), exit(-1);
+
+    char *grants = jwt_get_grants_json(ymtoken, NULL); // NULL means all
+    if (grants == NULL)
+        perror("jwt_get_grants_json"), exit(-1);
+
+    // printf("redecoded: %s\n", grants);
+    
+    // return send_error(ta, HTTP_NOT_FOUND, "API not implemented");
+    
+    return 1;
 }
 
 /* Set up an http client, associating it with a bufio buffer. */
