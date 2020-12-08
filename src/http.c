@@ -356,8 +356,19 @@ handle_api(struct http_transaction *ta)
         perror("jwt_encode_str"), exit(-1);
 
     //printf("encoded as %s\nTry entering this at jwt.io\n", encoded);
+<<<<<<< HEAD
     http_add_header(&ta->resp_headers, "Set-Cookie", encoded);
+=======
+    //printf("%s", encoded);
 
+    http_add_header(&ta->resp_headers, "", encoded);
+    //send_response_header(ta);
+    //printf("This is encoded: %s", encoded);
+>>>>>>> c3f2d3c09a71f485630388ca381d3bc701bdfed7
+
+    ta->resp_status = HTTP_OK;
+    
+    
     jwt_t *ymtoken;
     if (jwt_decode(&ymtoken, encoded, 
             (unsigned char *)NEVER_EMBED_A_SECRET_IN_CODE, strlen(NEVER_EMBED_A_SECRET_IN_CODE)))
@@ -366,6 +377,9 @@ handle_api(struct http_transaction *ta)
     char *grants = jwt_get_grants_json(ymtoken, NULL); // NULL means all
     if (grants == NULL)
         perror("jwt_get_grants_json"), exit(-1);
+    
+    buffer_appends(&ta->resp_body, grants);
+    send_response(ta);
 
     // printf("redecoded: %s\n", grants);
     
