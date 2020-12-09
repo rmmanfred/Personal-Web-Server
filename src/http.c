@@ -43,7 +43,7 @@ http_parse_request(struct http_transaction *ta)
     ssize_t len = bufio_readline(ta->client->bufio, &req_offset);
     if (len < 2)       // error, EOF, or less than 2 characters
     {
-        printf("EOF\n"); //added by Ross (12/8)
+        //printf("EOF\n"); //added by Ross (12/8)
         return false;
     }
 
@@ -358,12 +358,13 @@ handle_api(struct http_transaction *ta)
     //printf("encoded as %s\nTry entering this at jwt.io\n", encoded);
     //printf("%s", encoded);
 
-    http_add_header(&ta->resp_headers, "", encoded);
     //send_response_header(ta);
     //printf("This is encoded: %s", encoded);
+    //char * newEncode = "\0";
+    char newEncode[strlen(encoded) + 11];
+    sprintf(newEncode, "auth-token=%s", encoded);
 
     ta->resp_status = HTTP_OK;
-    
     
     jwt_t *ymtoken;
     if (jwt_decode(&ymtoken, encoded, 
@@ -374,6 +375,7 @@ handle_api(struct http_transaction *ta)
     if (grants == NULL)
         perror("jwt_get_grants_json"), exit(-1);
     
+    http_add_header(&ta->resp_headers, "Set-Cookie", newEncode);
     buffer_appends(&ta->resp_body, grants);
     send_response(ta);
 
@@ -446,8 +448,9 @@ http_handle_client(struct http_client *self)
 {
     for(;;)
     {
-        bool dead = http_handle_transaction(self);
-        if (!dead)
+        //bool dead = http_handle_transaction(self);
+        //if (!dead)
+        if (!http_handle_transaction(self))
         {
             break;
         }
