@@ -166,7 +166,7 @@ start_response(struct http_transaction * ta, buffer_t *res)
         buffer_appends(res, "400 Bad Request");
         break;
     case HTTP_PERMISSION_DENIED:
-        buffer_appends(res, "403 Forbidden");
+        buffer_appends(res, "403 Permission Denied");
         break;
     case HTTP_NOT_FOUND:
         buffer_appends(res, "404 Not Found");
@@ -328,6 +328,10 @@ out:
 static int
 handle_api(struct http_transaction *ta)
 {
+    if (strstr(bufio_offset2ptr(ta->client->bufio, ta->req_body), "\"username\":\"user0\"") == NULL || strstr(bufio_offset2ptr(ta->client->bufio, ta->req_body), "\"password\":\"thepassword\"") == NULL) {
+        return send_error(ta, HTTP_PERMISSION_DENIED, "403 Forbidden");
+    }
+
     jwt_t *mytoken;
 
     if (jwt_new(&mytoken))
@@ -380,8 +384,6 @@ handle_api(struct http_transaction *ta)
     send_response(ta);
 
     // printf("redecoded: %s\n", grants);
-    
-    // return send_error(ta, HTTP_NOT_FOUND, "API not implemented");
     
     return 1;
 }
