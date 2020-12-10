@@ -44,9 +44,10 @@ static void * connect(void * client)
     http_setup_client(user, bufio_create(user->socket));
     http_handle_client(user);
     bufio_close(user->bufio);
+    free(client);
     pthread_exit(NULL);
     return NULL;
-}*/
+}//*/
 
 /*
  * A non-concurrent, iterative server that serves one client at a time.
@@ -61,16 +62,15 @@ server_loop(char *port_string)
         int client_socket = socket_accept_client(accepting_socket);
         if (client_socket == -1)
             return;
-
-        struct http_client client;
+        struct http_client * client = malloc(sizeof(struct http_client));
         //new code Ross (12/8)
-        client.socket = client_socket;
+        client->socket = client_socket;
         //pthread_t subject;
-        //pthread_create(&subject, NULL, connect, &client);
+        //pthread_create(&subject, NULL, connect, client);
         //http_setup_client(&client, bufio_create(client_socket));
-        http_setup_client(&client, bufio_create(client.socket));
-        http_handle_client(&client);
-        bufio_close(client.bufio);
+        http_setup_client(client, bufio_create(client->socket));
+        http_handle_client(client);
+        bufio_close(client->bufio);
     }
 }
 

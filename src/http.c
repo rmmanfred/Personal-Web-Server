@@ -35,6 +35,8 @@
 
 static const char * NEVER_EMBED_A_SECRET_IN_CODE = "supa secret2";
 
+static bool verify(struct http_transaction *ta);
+
 /* Parse HTTP request line, setting req_method, req_path, and req_version. */
 static bool
 http_parse_request(struct http_transaction *ta)
@@ -85,6 +87,8 @@ static bool
 http_process_headers(struct http_transaction *ta)
 //http_process_headers(struct http_transaction *ta, bool * dead)
 {
+    printf("-------------------\n");
+    printf("body V\n%s, %d\n", bufio_offset2ptr(ta->client->bufio, ta->req_body), ta->req_content_len);
     for (;;) {
         size_t header_offset;
         ssize_t len = bufio_readline(ta->client->bufio, &header_offset);
@@ -114,12 +118,25 @@ http_process_headers(struct http_transaction *ta)
         }
 
         /* Handle other headers here. */
-        //Check if connection should be closed
-        if (!strcasecmp(field_name, "Connection")) {
-            if (!strcasecmp(field_value, "close"))
+        if (!strcasecmp(field_name, "Cookie")) {
+            char * ret;
+            ret = strstr(field_value, "auth-token=");
+            if (ret != NULL)
             {
-                //*dead = true;
+                ta->signature = NULL;
+                ret += 11;
+                char * token;
+                strtok_r(ret, ";", &token);
+                //printf("sign: %s\n", ret);
+                //memcpy(ta->signature, ret, (strlen(ret)));
+                //ta->signature[strlen(ret)] = '\0';
+                ta->signature = ret;
             }
+            else
+            {
+                ta->signature = NULL;
+            }
+            
         }
     }
 }
@@ -201,6 +218,8 @@ send_response_header(struct http_transaction *ta)
     buffer_t response;
     buffer_init(&response, 80);
 
+    printf("sending response...\n");
+    printf("headers\n%s\n", ta->resp_headers.buf);
     start_response(ta, &response);
     if (bufio_sendbuffer(ta->client->bufio, &response) == -1)
         return false;
@@ -221,8 +240,11 @@ send_response(struct http_transaction *ta)
     add_content_length(&ta->resp_headers, ta->resp_body.len);
 
     if (!send_response_header(ta))
+    {
         return false;
+    }
 
+    printf("body\n%s\n", ta->resp_body.buf);
     return bufio_sendbuffer(ta->client->bufio, &ta->resp_body) != -1;
 }
 
@@ -328,63 +350,82 @@ out:
 static int
 handle_api(struct http_transaction *ta)
 {
-    if (strstr(bufio_offset2ptr(ta->client->bufio, ta->req_body), "\"username\":\"user0\"") == NULL || strstr(bufio_offset2ptr(ta->client->bufio, ta->req_body), "\"password\":\"thepassword\"") == NULL) {
-        return send_error(ta, HTTP_PERMISSION_DENIED, "403 Forbidden");
+    if (ta->req_method == HTTP_POST)
+    {
+        if (strstr(bufio_offset2ptr(ta->client->bufio, ta->req_body), "\"username\":\"user0\"") == NULL || strstr(bufio_offset2ptr(ta->client->bufio, ta->req_body), "\"password\":\"thepassword\"") == NULL) {
+            return send_error(ta, HTTP_PERMISSION_DENIED, "403 Forbidden");
+        }
+
+        jwt_t *mytoken;
+
+        if (jwt_new(&mytoken))
+            perror("jwt_new"), exit(-1);
+
+        if (jwt_add_grant(mytoken, "sub", "user0"))
+            perror("jwt_add_grant sub"), exit(-1);
+
+        time_t now = time(NULL);
+        if (jwt_add_grant_int(mytoken, "iat", now))
+            perror("jwt_add_grant iat"), exit(-1);
+
+        if (jwt_add_grant_int(mytoken, "exp", now + 3600 * 24))
+            perror("jwt_add_grant exp"), exit(-1);
+
+        if (jwt_set_alg(mytoken, JWT_ALG_HS256, 
+                (unsigned char *)NEVER_EMBED_A_SECRET_IN_CODE, strlen(NEVER_EMBED_A_SECRET_IN_CODE)))
+            perror("jwt_set_alg"), exit(-1);
+
+        //printf("dump:\n");
+        /*if (jwt_dump_fp(mytoken, stdout, 1))
+            perror("jwt_dump_fp"), exit(-1);*/
+
+        char *encoded = jwt_encode_str(mytoken);
+        if (encoded == NULL)
+            perror("jwt_encode_str"), exit(-1);
+
+        ta->resp_status = HTTP_OK;
+        //printf("key: %s\n", encoded);
+        /*jwt_t *ymtoken;
+        if (jwt_decode(&ymtoken, encoded, 
+                (unsigned char *)NEVER_EMBED_A_SECRET_IN_CODE, strlen(NEVER_EMBED_A_SECRET_IN_CODE)))
+            perror("jwt_decode"), exit(-1);*/
+
+        char *grants = jwt_get_grants_json(mytoken, NULL); // NULL means all
+        if (grants == NULL)
+            perror("jwt_get_grants_json"), exit(-1);
+
+        //printf("redecoded: %s\n", grants);
+        
+        char newEncode[strlen(encoded) + 20];
+        snprintf(newEncode, sizeof(newEncode), "auth-token=%s; Path=/", 
+                encoded);
+        http_add_header(&ta->resp_headers, "Set-Cookie", newEncode);
+        buffer_appends(&ta->resp_body, grants);
+        send_response(ta);
     }
-
-    jwt_t *mytoken;
-
-    if (jwt_new(&mytoken))
-        perror("jwt_new"), exit(-1);
-
-    if (jwt_add_grant(mytoken, "sub", "user0"))
-        perror("jwt_add_grant sub"), exit(-1);
-
-    time_t now = time(NULL);
-    if (jwt_add_grant_int(mytoken, "iat", now))
-        perror("jwt_add_grant iat"), exit(-1);
-
-    if (jwt_add_grant_int(mytoken, "exp", now + 3600 * 24))
-        perror("jwt_add_grant exp"), exit(-1);
-
-    if (jwt_set_alg(mytoken, JWT_ALG_HS256, 
-            (unsigned char *)NEVER_EMBED_A_SECRET_IN_CODE, strlen(NEVER_EMBED_A_SECRET_IN_CODE)))
-        perror("jwt_set_alg"), exit(-1);
-
-    //printf("dump:\n");
-    if (jwt_dump_fp(mytoken, stdout, 1))
-        perror("jwt_dump_fp"), exit(-1);
-
-    char *encoded = jwt_encode_str(mytoken);
-    if (encoded == NULL)
-        perror("jwt_encode_str"), exit(-1);
-
-    //printf("encoded as %s\nTry entering this at jwt.io\n", encoded);
-    //printf("%s", encoded);
-
-    //send_response_header(ta);
-    //printf("This is encoded: %s", encoded);
-    //char * newEncode = "\0";
-    char newEncode[strlen(encoded) + 11];
-    sprintf(newEncode, "auth-token=%s", encoded);
-
-    ta->resp_status = HTTP_OK;
-    
-    jwt_t *ymtoken;
-    if (jwt_decode(&ymtoken, encoded, 
-            (unsigned char *)NEVER_EMBED_A_SECRET_IN_CODE, strlen(NEVER_EMBED_A_SECRET_IN_CODE)))
-        perror("jwt_decode"), exit(-1);
-
-    char *grants = jwt_get_grants_json(ymtoken, NULL); // NULL means all
-    if (grants == NULL)
-        perror("jwt_get_grants_json"), exit(-1);
-    
-    http_add_header(&ta->resp_headers, "Set-Cookie", newEncode);
-    buffer_appends(&ta->resp_body, grants);
-    send_response(ta);
-
-    // printf("redecoded: %s\n", grants);
-    
+    else if (ta->req_method == HTTP_GET)
+    {
+        ta->resp_status = HTTP_OK;
+        if (!verify(ta))
+        {
+            buffer_appends(&ta->resp_body, "{}");
+            send_response(ta);
+        }  
+        else
+        {
+            buffer_appends(&ta->resp_body, bufio_offset2ptr(ta->client->bufio, 
+                ta->req_body));
+            /*char newEncode[strlen(ta->signature) + 20];
+            snprintf(newEncode, sizeof(newEncode), "auth-token=%s; Path=/", 
+                ta->signature);
+            http_add_header(&ta->resp_headers, "Set-Cookie", newEncode);*/
+            send_response(ta);
+        }
+    }
+    else
+    {
+        return 0; //unknown request?
+    }    
     return 1;
 }
 
@@ -416,8 +457,8 @@ http_handle_transaction(struct http_client *self)
             return false;
 
         // To see the body, use this:
-         char *body = bufio_offset2ptr(ta.client->bufio, ta.req_body);
-         hexdump(body, ta.req_content_len);
+         /*char *body = bufio_offset2ptr(ta.client->bufio, ta.req_body);
+         hexdump(body, ta.req_content_len);*/
     }
 
     buffer_init(&ta.resp_headers, 1024);
@@ -430,8 +471,22 @@ http_handle_transaction(struct http_client *self)
         rc = handle_api(&ta);
     } else
     if (STARTS_WITH(req_path, "/private")) {
-        /* not implemented */
+        if (verify(&ta))
+        {
+            send_error(&ta, HTTP_NOT_IMPLEMENTED, "Private not done yet");
+        }
+        else
+        {
+            send_error(&ta, HTTP_BAD_REQUEST, "Verification failed");
+        }
     } else {
+        /*if (ta.signature != NULL)
+        {
+            char newEncode[strlen(ta.signature) + 20];
+            snprintf(newEncode, sizeof(newEncode), "auth-token=%s Path=/", 
+                ta.signature);
+            http_add_header(&ta.resp_headers, "Set-Cookie", newEncode);
+        }*/
         rc = handle_static_asset(&ta, server_root);
     }
 
@@ -458,4 +513,85 @@ http_handle_client(struct http_client *self)
         }
     }
     return true;
+}
+
+/**
+ * 
+ */
+static bool verify(struct http_transaction *ta)
+{
+    jwt_t *decoded;
+    //char * claims = bufio_offset2ptr(ta->client->bufio, ta->req_body);
+    
+    if (ta->signature == NULL)
+    {
+        return false;
+    }
+    char * word = ta->signature;
+    int result = jwt_decode(&decoded, word, 
+            (unsigned char *)NEVER_EMBED_A_SECRET_IN_CODE, strlen(NEVER_EMBED_A_SECRET_IN_CODE));
+    if (result != 0)
+    {
+        //sign fails, reject
+        //send_error(ta, HTTP_OK, "{}");
+        return false;
+        //perror("jwt_decode"), exit(-1);
+    }
+    else //sign passes, check claims
+    {
+        //iat > 0, < current time
+        // exp > current
+        // sub = user0
+        char *grants = jwt_get_grants_json(decoded, NULL); // NULL means all
+        if (grants == NULL)
+            perror("jwt_get_grants_json"), exit(-1);
+        printf("claims: %s\n", grants);
+        //exp
+        time_t now = time(NULL); //current time
+        printf("now: %ld\n", now);
+        char * check;
+        check = strstr(grants, "\"exp\":");
+        if (check == NULL)
+        {
+            return false;
+        }
+        check += 6;
+        strtok(check, ",");
+        int issue = atoi(check);
+        printf("exp: %d\n", issue);
+        if (issue < (int) now)
+        {
+            return false;
+        }
+
+        //iat
+        check = strstr(grants, "\"iat\":");
+        if (check == NULL)
+        {
+            return false;
+        }
+        check += 6;
+        strtok(check, ",");
+        issue = atoi(check);
+        printf("iat: %d\n", issue);
+        if (issue > (int) now)
+        {
+            return false;
+        }
+
+        //sub
+        check = strstr(grants, "\"sub\":\"");
+        if (check == NULL)
+        {
+            return false;
+        }
+        check += 7;
+        strtok(check, "\"");
+        printf("sub: %s\n", check);
+        if (strcmp("user0", check) != 0)
+        {
+            return false;
+        }
+        return true;
+    }
 }

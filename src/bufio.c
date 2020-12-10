@@ -113,6 +113,7 @@ char *
 bufio_offset2ptr(struct bufio *self, size_t offset)
 {
     assert (offset < self->buf.len);
+    //printf("success\n");//Ross added /////////////////////////////////
     return self->buf.buf + offset;
 }
 
