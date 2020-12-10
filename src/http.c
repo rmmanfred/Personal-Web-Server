@@ -384,17 +384,10 @@ handle_api(struct http_transaction *ta)
             perror("jwt_encode_str"), exit(-1);
 
         ta->resp_status = HTTP_OK;
-        //printf("key: %s\n", encoded);
-        /*jwt_t *ymtoken;
-        if (jwt_decode(&ymtoken, encoded, 
-                (unsigned char *)NEVER_EMBED_A_SECRET_IN_CODE, strlen(NEVER_EMBED_A_SECRET_IN_CODE)))
-            perror("jwt_decode"), exit(-1);*/
 
         char *grants = jwt_get_grants_json(mytoken, NULL); // NULL means all
         if (grants == NULL)
             perror("jwt_get_grants_json"), exit(-1);
-
-        //printf("redecoded: %s\n", grants);
         
         char newEncode[strlen(encoded) + 20];
         snprintf(newEncode, sizeof(newEncode), "auth-token=%s; Path=/", 
@@ -415,10 +408,6 @@ handle_api(struct http_transaction *ta)
         {
             buffer_appends(&ta->resp_body, bufio_offset2ptr(ta->client->bufio, 
                 ta->req_body));
-            /*char newEncode[strlen(ta->signature) + 20];
-            snprintf(newEncode, sizeof(newEncode), "auth-token=%s; Path=/", 
-                ta->signature);
-            http_add_header(&ta->resp_headers, "Set-Cookie", newEncode);*/
             send_response(ta);
         }
     }
@@ -474,7 +463,15 @@ http_handle_transaction(struct http_client *self)
     if (STARTS_WITH(req_path, "/api")) {
         rc = handle_api(&ta);
     } else if (STARTS_WITH(req_path, "/private")) {
-        if (strstr(bufio_offset2ptr(ta.client->bufio, ta.req_body), "\"username\":\"user0\"") == NULL || strstr(bufio_offset2ptr(ta.client->bufio, ta.req_body), "\"password\":\"thepassword\"") == NULL) {
+        if (verify(&ta)) //authenticated
+        {
+            rc = handle_static_asset(&ta, server_root);
+        }
+        else
+        {
+            rc = send_error(&ta, HTTP_PERMISSION_DENIED, "Not Authorized?");
+        }
+        /*if (strstr(bufio_offset2ptr(ta.client->bufio, ta.req_body), "\"username\":\"user0\"") == NULL || strstr(bufio_offset2ptr(ta.client->bufio, ta.req_body), "\"password\":\"thepassword\"") == NULL) {
             return send_error(&ta, HTTP_PERMISSION_DENIED, "403 Forbidden");
         }
         // if (strcmp(ta.signature, jwt_decode(&ymtoken, encoded, (unsigned char *)NEVER_EMBED_A_SECRET_IN_CODE, strlen(NEVER_EMBED_A_SECRET_IN_CODE)) {
@@ -482,17 +479,10 @@ http_handle_transaction(struct http_client *self)
 
         if (strstr(ta.req_method, "POST") != NULL) {
             return send_error(&ta, HTTP_METHOD_NOT_ALLOWED, "405 METHOD NOT SUPPORTED");
-        }
+        }*/
 
         handle_static_asset(&ta, server_root);
     } else {
-        /*if (ta.signature != NULL)
-        {
-            char newEncode[strlen(ta.signature) + 20];
-            snprintf(newEncode, sizeof(newEncode), "auth-token=%s Path=/", 
-                ta.signature);
-            http_add_header(&ta.resp_headers, "Set-Cookie", newEncode);
-        }*/
         rc = handle_static_asset(&ta, server_root);
     }
 
@@ -511,8 +501,6 @@ http_handle_client(struct http_client *self)
 {
     for(;;)
     {
-        //bool dead = http_handle_transaction(self);
-        //if (!dead)
         if (!http_handle_transaction(self))
         {
             break;
@@ -527,7 +515,6 @@ http_handle_client(struct http_client *self)
 static bool verify(struct http_transaction *ta)
 {
     jwt_t *decoded;
-    //char * claims = bufio_offset2ptr(ta->client->bufio, ta->req_body);
     
     if (ta->signature == NULL)
     {
@@ -538,10 +525,7 @@ static bool verify(struct http_transaction *ta)
             (unsigned char *)NEVER_EMBED_A_SECRET_IN_CODE, strlen(NEVER_EMBED_A_SECRET_IN_CODE));
     if (result != 0)
     {
-        //sign fails, reject
-        //send_error(ta, HTTP_OK, "{}");
         return false;
-        //perror("jwt_decode"), exit(-1);
     }
     else //sign passes, check claims
     {
@@ -551,10 +535,10 @@ static bool verify(struct http_transaction *ta)
         char *grants = jwt_get_grants_json(decoded, NULL); // NULL means all
         if (grants == NULL)
             perror("jwt_get_grants_json"), exit(-1);
-        printf("claims: %s\n", grants);
+
         //exp
         time_t now = time(NULL); //current time
-        printf("now: %ld\n", now);
+        //printf("now: %ld\n", now);
         char * check;
         check = strstr(grants, "\"exp\":");
         if (check == NULL)
@@ -564,13 +548,14 @@ static bool verify(struct http_transaction *ta)
         check += 6;
         strtok(check, ",");
         int issue = atoi(check);
-        printf("exp: %d\n", issue);
+        //printf("exp: %d\n", issue);
         if (issue < (int) now)
         {
             return false;
         }
 
         //iat
+        grants = jwt_get_grants_json(decoded, NULL);
         check = strstr(grants, "\"iat\":");
         if (check == NULL)
         {
@@ -579,13 +564,14 @@ static bool verify(struct http_transaction *ta)
         check += 6;
         strtok(check, ",");
         issue = atoi(check);
-        printf("iat: %d\n", issue);
+        //printf("iat: %d\n", issue);
         if (issue > (int) now)
         {
             return false;
         }
 
         //sub
+        grants = jwt_get_grants_json(decoded, NULL);
         check = strstr(grants, "\"sub\":\"");
         if (check == NULL)
         {
@@ -593,11 +579,12 @@ static bool verify(struct http_transaction *ta)
         }
         check += 7;
         strtok(check, "\"");
-        printf("sub: %s\n", check);
+        //printf("sub: %s\n", check);
         if (strcmp("user0", check) != 0)
         {
             return false;
         }
+        //printf("passed\n");
         return true;
     }
 }
