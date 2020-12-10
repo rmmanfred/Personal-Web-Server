@@ -455,16 +455,8 @@ http_handle_transaction(struct http_client *self)
     buffer_init(&ta.resp_body, 0);
 
     bool rc = false;
-    size_t req_offset;
-    ssize_t len = bufio_readline(ta.client->bufio, &req_offset);
-    if (len < 2)       // error, EOF, or less than 2 characters
-    {
-        return false;
-    }
+
     char *req_path = bufio_offset2ptr(ta.client->bufio, ta.req_path);
-    char *request = bufio_offset2ptr(ta.client->bufio, req_offset);
-    char *endptr;
-    char *method = strtok_r(request, " ", &endptr);
     if (strstr(req_path, "../") != NULL || strstr(req_path, "/..") != NULL) {
         return send_error(&ta, HTTP_NOT_FOUND, "404 NOT FOUND");
     }
@@ -472,25 +464,20 @@ http_handle_transaction(struct http_client *self)
     if (STARTS_WITH(req_path, "/api")) {
         rc = handle_api(&ta);
     } else if (STARTS_WITH(req_path, "/private")) {
+
+        if (ta.req_method == HTTP_POST || ta.req_method == HTTP_UNKNOWN) 
+        {
+            return send_error(&ta, HTTP_METHOD_NOT_ALLOWED, "405 METHOD NOT SUPPORTED");
+        }
+
         if (verify(&ta)) //authenticated
         {
             rc = handle_static_asset(&ta, server_root);
         }
         else
         {
-            rc = send_error(&ta, HTTP_PERMISSION_DENIED, "Not Authorized?");
+            rc = send_error(&ta, HTTP_PERMISSION_DENIED, "403 Forbidden");
         }
-        /*if (strstr(bufio_offset2ptr(ta.client->bufio, ta.req_body), "\"username\":\"user0\"") == NULL || strstr(bufio_offset2ptr(ta.client->bufio, ta.req_body), "\"password\":\"thepassword\"") == NULL) {
-            return send_error(&ta, HTTP_PERMISSION_DENIED, "403 Forbidden");
-        }
-        // if (strcmp(ta.signature, jwt_decode(&ymtoken, encoded, (unsigned char *)NEVER_EMBED_A_SECRET_IN_CODE, strlen(NEVER_EMBED_A_SECRET_IN_CODE)) {
-        // }
-
-        if (strstr(method, "POST") != NULL) {
-            return send_error(&ta, HTTP_METHOD_NOT_ALLOWED, "405 METHOD NOT SUPPORTED");
-        }*/
-
-        handle_static_asset(&ta, server_root);
     } else {
         rc = handle_static_asset(&ta, server_root);
     }
@@ -508,12 +495,16 @@ http_handle_transaction(struct http_client *self)
 bool
 http_handle_client(struct http_client *self)
 {
-    for(;;)
+    /*for(;;)
     {
         if (!http_handle_transaction(self))
         {
             break;
         }
+    }*/
+    while (http_handle_transaction(self))
+    {
+        //
     }
     return true;
 }
