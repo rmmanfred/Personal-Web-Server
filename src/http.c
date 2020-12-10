@@ -426,11 +426,24 @@ http_handle_transaction(struct http_client *self)
 
     bool rc = false;
     char *req_path = bufio_offset2ptr(ta.client->bufio, ta.req_path);
+    if (strstr(req_path, "../") != NULL || strstr(req_path, "/..") != NULL) {
+        return send_error(&ta, HTTP_NOT_FOUND, "404 NOT FOUND");
+    }
+    
     if (STARTS_WITH(req_path, "/api")) {
         rc = handle_api(&ta);
-    } else
-    if (STARTS_WITH(req_path, "/private")) {
-        /* not implemented */
+    } else if (STARTS_WITH(req_path, "/private")) {
+        if (strstr(bufio_offset2ptr(ta.client->bufio, ta.req_body), "\"username\":\"user0\"") == NULL || strstr(bufio_offset2ptr(ta.client->bufio, ta.req_body), "\"password\":\"thepassword\"") == NULL) {
+            return send_error(&ta, HTTP_PERMISSION_DENIED, "403 Forbidden");
+        }
+        // if (strcmp(ta.signature, jwt_decode(&ymtoken, encoded, (unsigned char *)NEVER_EMBED_A_SECRET_IN_CODE, strlen(NEVER_EMBED_A_SECRET_IN_CODE)) {
+        // }
+
+        if (strstr(ta.req_method, "POST") != NULL) {
+            return send_error(&ta, HTTP_METHOD_NOT_ALLOWED, "405 METHOD NOT SUPPORTED");
+        }
+
+        handle_static_asset(&ta, server_root);
     } else {
         rc = handle_static_asset(&ta, server_root);
     }
