@@ -455,7 +455,16 @@ http_handle_transaction(struct http_client *self)
     buffer_init(&ta.resp_body, 0);
 
     bool rc = false;
+    size_t req_offset;
+    ssize_t len = bufio_readline(ta.client->bufio, &req_offset);
+    if (len < 2)       // error, EOF, or less than 2 characters
+    {
+        return false;
+    }
     char *req_path = bufio_offset2ptr(ta.client->bufio, ta.req_path);
+    char *request = bufio_offset2ptr(ta.client->bufio, req_offset);
+    char *endptr;
+    char *method = strtok_r(request, " ", &endptr);
     if (strstr(req_path, "../") != NULL || strstr(req_path, "/..") != NULL) {
         return send_error(&ta, HTTP_NOT_FOUND, "404 NOT FOUND");
     }
@@ -477,7 +486,7 @@ http_handle_transaction(struct http_client *self)
         // if (strcmp(ta.signature, jwt_decode(&ymtoken, encoded, (unsigned char *)NEVER_EMBED_A_SECRET_IN_CODE, strlen(NEVER_EMBED_A_SECRET_IN_CODE)) {
         // }
 
-        if (strstr(ta.req_method, "POST") != NULL) {
+        if (strstr(method, "POST") != NULL) {
             return send_error(&ta, HTTP_METHOD_NOT_ALLOWED, "405 METHOD NOT SUPPORTED");
         }*/
 
