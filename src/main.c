@@ -71,6 +71,7 @@ server_loop(char *port_string)
         http_setup_client(client, bufio_create(client->socket));
         http_handle_client(client);
         bufio_close(client->bufio);
+        free(client);
     }
 }
 

@@ -68,7 +68,7 @@ socket_open_bind_listen(char * port_number_string, int backlog)
         }
 
         // Uncomment this to see the address returned
-        printf("%s: %s\n", pinfo->ai_family == AF_INET ? "AF_INET" :
+        /*printf("%s: %s\n", pinfo->ai_family == AF_INET ? "AF_INET" :
                            pinfo->ai_family == AF_INET6 ? "AF_INET6" : "?", 
                            printed_addr);
         //*/

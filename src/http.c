@@ -36,6 +36,7 @@
 static const char * NEVER_EMBED_A_SECRET_IN_CODE = "supa secret2";
 
 static bool verify(struct http_transaction *ta);
+static bool confirmCredentials(struct http_transaction * ta);
 
 /* Parse HTTP request line, setting req_method, req_path, and req_version. */
 static bool
@@ -87,8 +88,8 @@ static bool
 http_process_headers(struct http_transaction *ta)
 //http_process_headers(struct http_transaction *ta, bool * dead)
 {
-    printf("-------------------\n");
-    printf("body V\n%s, %d\n", bufio_offset2ptr(ta->client->bufio, ta->req_body), ta->req_content_len);
+    //printf("-------------------\n");
+    //printf("body V\n%s, %d\n", bufio_offset2ptr(ta->client->bufio, ta->req_body), ta->req_content_len);
     for (;;) {
         size_t header_offset;
         ssize_t len = bufio_readline(ta->client->bufio, &header_offset);
@@ -112,7 +113,7 @@ http_process_headers(struct http_transaction *ta)
         if (field_name == NULL)
             return false;
 
-        printf("Header: %s: %s\n", field_name, field_value);
+        //printf("Header: %s: %s\n", field_name, field_value);
         if (!strcasecmp(field_name, "Content-Length")) {
             ta->req_content_len = atoi(field_value);
         }
@@ -218,8 +219,8 @@ send_response_header(struct http_transaction *ta)
     buffer_t response;
     buffer_init(&response, 80);
 
-    printf("sending response...\n");
-    printf("headers\n%s\n", ta->resp_headers.buf);
+    //printf("sending response...\n");
+    //printf("headers\n%s\n", ta->resp_headers.buf);
     start_response(ta, &response);
     if (bufio_sendbuffer(ta->client->bufio, &response) == -1)
         return false;
@@ -244,7 +245,7 @@ send_response(struct http_transaction *ta)
         return false;
     }
 
-    printf("body\n%s\n", ta->resp_body.buf);
+    //printf("body\n%s\n", ta->resp_body.buf);
     return bufio_sendbuffer(ta->client->bufio, &ta->resp_body) != -1;
 }
 
@@ -352,62 +353,76 @@ handle_api(struct http_transaction *ta)
 {
     if (ta->req_method == HTTP_POST)
     {
-        if (strstr(bufio_offset2ptr(ta->client->bufio, ta->req_body), "\"username\":\"user0\"") == NULL || strstr(bufio_offset2ptr(ta->client->bufio, ta->req_body), "\"password\":\"thepassword\"") == NULL) {
-            return send_error(ta, HTTP_PERMISSION_DENIED, "403 Forbidden");
+        if (!confirmCredentials(ta))
+        {
+            return send_error(ta, HTTP_PERMISSION_DENIED, "Authentication failed.");
         }
+        else
+        {
+            jwt_t *mytoken;
 
-        jwt_t *mytoken;
+            if (jwt_new(&mytoken))
+                perror("jwt_new"), exit(-1);
 
-        if (jwt_new(&mytoken))
-            perror("jwt_new"), exit(-1);
+            if (jwt_add_grant(mytoken, "sub", "user0"))
+                perror("jwt_add_grant sub"), exit(-1);
 
-        if (jwt_add_grant(mytoken, "sub", "user0"))
-            perror("jwt_add_grant sub"), exit(-1);
+            time_t now = time(NULL);
+            if (jwt_add_grant_int(mytoken, "iat", now))
+                perror("jwt_add_grant iat"), exit(-1);
 
-        time_t now = time(NULL);
-        if (jwt_add_grant_int(mytoken, "iat", now))
-            perror("jwt_add_grant iat"), exit(-1);
+            //if (jwt_add_grant_int(mytoken, "exp", now + 3600 * 24))
+                //perror("jwt_add_grant exp"), exit(-1);
 
-        if (jwt_add_grant_int(mytoken, "exp", now + 3600 * 24))
-            perror("jwt_add_grant exp"), exit(-1);
+            if (jwt_add_grant_int(mytoken, "exp", now + token_expiration_time))
+                perror("jwt_add_grant exp"), exit(-1);
 
-        if (jwt_set_alg(mytoken, JWT_ALG_HS256, 
-                (unsigned char *)NEVER_EMBED_A_SECRET_IN_CODE, strlen(NEVER_EMBED_A_SECRET_IN_CODE)))
-            perror("jwt_set_alg"), exit(-1);
+            if (jwt_set_alg(mytoken, JWT_ALG_HS256, 
+                    (unsigned char *)NEVER_EMBED_A_SECRET_IN_CODE, strlen(NEVER_EMBED_A_SECRET_IN_CODE)))
+                perror("jwt_set_alg"), exit(-1);
 
-        //printf("dump:\n");
-        /*if (jwt_dump_fp(mytoken, stdout, 1))
-            perror("jwt_dump_fp"), exit(-1);*/
+            //printf("dump:\n");
+            /*if (jwt_dump_fp(mytoken, stdout, 1))
+                perror("jwt_dump_fp"), exit(-1);*/
 
-        char *encoded = jwt_encode_str(mytoken);
-        if (encoded == NULL)
-            perror("jwt_encode_str"), exit(-1);
+            char *encoded = jwt_encode_str(mytoken);
+            if (encoded == NULL)
+                perror("jwt_encode_str"), exit(-1);
 
-        ta->resp_status = HTTP_OK;
+            ta->resp_status = HTTP_OK;
 
-        char *grants = jwt_get_grants_json(mytoken, NULL); // NULL means all
-        if (grants == NULL)
-            perror("jwt_get_grants_json"), exit(-1);
-        
-        char newEncode[strlen(encoded) + 20];
-        snprintf(newEncode, sizeof(newEncode), "auth-token=%s; Path=/", 
-                encoded);
-        http_add_header(&ta->resp_headers, "Set-Cookie", newEncode);
-        buffer_appends(&ta->resp_body, grants);
-        send_response(ta);
+            char *grants = jwt_get_grants_json(mytoken, NULL); // NULL means all
+            if (grants == NULL)
+                perror("jwt_get_grants_json"), exit(-1);
+            
+            char newEncode[strlen(encoded) + 20];
+            snprintf(newEncode, sizeof(newEncode), "auth-token=%s; Path=/", 
+                    encoded);
+            http_add_header(&ta->resp_headers, "Set-Cookie", newEncode);
+            buffer_appends(&ta->resp_body, grants);
+            send_response(ta);
+        }
     }
     else if (ta->req_method == HTTP_GET)
     {
-        ta->resp_status = HTTP_OK;
+        //ta->resp_status = HTTP_OK;
         if (!verify(ta))
         {
+            ta->resp_status = HTTP_PERMISSION_DENIED;
             buffer_appends(&ta->resp_body, "{}");
             send_response(ta);
         }  
         else
         {
-            buffer_appends(&ta->resp_body, bufio_offset2ptr(ta->client->bufio, 
-                ta->req_body));
+            ta->resp_status = HTTP_OK;
+            //buffer_appends(&ta->resp_body, bufio_offset2ptr(ta->client->bufio, 
+                //ta->req_body));
+                jwt_t * decoded;
+            jwt_decode(&decoded, ta->signature, 
+                (unsigned char *)NEVER_EMBED_A_SECRET_IN_CODE, 
+                strlen(NEVER_EMBED_A_SECRET_IN_CODE));
+            char *grants = jwt_get_grants_json(decoded, NULL);
+            buffer_appends(&ta->resp_body, grants);
             send_response(ta);
         }
     }
@@ -485,7 +500,7 @@ http_handle_transaction(struct http_client *self)
     buffer_delete(&ta.resp_headers);
     buffer_delete(&ta.resp_body);
 
-    return rc;
+    return rc && !(ta.req_version == HTTP_1_0);
 }
 
 /**
@@ -495,16 +510,9 @@ http_handle_transaction(struct http_client *self)
 bool
 http_handle_client(struct http_client *self)
 {
-    /*for(;;)
-    {
-        if (!http_handle_transaction(self))
-        {
-            break;
-        }
-    }*/
     while (http_handle_transaction(self))
     {
-        //
+        
     }
     return true;
 }
@@ -587,4 +595,62 @@ static bool verify(struct http_transaction *ta)
         //printf("passed\n");
         return true;
     }
+}
+
+/**
+ * Checks user credentials for proper user and pass
+ */
+static bool confirmCredentials(struct http_transaction * ta)
+{
+    char * entry = bufio_offset2ptr(ta->client->bufio, ta->req_body);
+    char entry2[strlen(entry)+1];
+    memcpy(entry2, entry, (strlen(entry)+1) * sizeof(char));
+    
+    //isolate user
+    char * user = strstr(entry, "\"username\":");
+    if (user == NULL)
+    {
+        return false;
+    }
+    //parse for gold
+    user += 11;
+    while (*user != '\"' && *user != '\0')
+    {
+        user++;
+    }
+    if (*user == '\0') //we never hit quotes
+    {
+        return false;
+    }
+    user++; //skip quote
+    char * martyr;
+    strtok_r(user, "\"", &martyr);
+    if (strcmp(user, "user0") != 0)
+    {
+        return false;
+    }
+
+    char * pass = strstr(entry2, "\"password\":");
+    if (pass == NULL)
+    {
+        return false;
+    }
+    //parse for gold
+    pass += 11;
+    while (*pass != '\"' && *pass != '\0')
+    {
+        pass++;
+    }
+    if (*pass == '\0') //we never hit quotes
+    {
+        return false;
+    }
+    pass++; //skip quote
+    char * martyr2;
+    strtok_r(pass, "\"", &martyr2);
+    if (strcmp(pass, "thepassword") != 0)
+    {
+        return false;
+    }
+    return true;
 }
