@@ -1,8 +1,5 @@
 /*
- * Skeleton files for personal server assignment.
- *
- * @author Godmar Back
- * written for CS3214, Spring 2018.
+ * Client setup for pserv assignment
  */
 #include <getopt.h>
 #include <stdio.h>
@@ -57,8 +54,8 @@ static void * connect(void * client)
 }
 
 /*
- * A non-concurrent, iterative server that serves one client at a time.
- * For each client, it handles exactly 1 HTTP transaction.
+ * Server loop supporting multiple threads and continouous client
+ * connections. Handles HTTP transactions until the connection is closed
  */
 static void
 server_loop(char *port_string)

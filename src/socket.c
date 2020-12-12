@@ -2,8 +2,6 @@
  * Support functions for dealing with sockets.
  *
  * Note: these functions cannot be used out of the box. 
- * In particular, support for protocol independent programming
- * is not fully implemented.  See below.
  *
  * Written by G. Back for CS 3214 Spring 2018.
  */
@@ -26,11 +24,8 @@
 #include "main.h"
 
 /*
- * Find a suitable IPv4 address to bind to, create a socket, bind it,
+ * Find a suitable address to bind to, create a socket, bind it,
  * invoke listen to get the socket ready for accepting clients.
- *
- * This function does not implement proper support for protocol-independent/
- * dual-stack binding.  Adding this is part of the assignment. 
  *
  * Returns -1 on error, setting errno.
  * Returns socket file descriptor otherwise.
@@ -64,9 +59,7 @@ socket_open_bind_listen(char * port_number_string, int backlog)
             return -1;
         }
 
-        /* Skip any non-IPv6 addresses.  
-         * Adding support for protocol independence/IPv6 is part of the project.
-         */
+        /* Skip any non-IPv6 addresses.*/
         if (pinfo->ai_family != AF_INET6)
             continue;
         int s = socket(pinfo->ai_family, pinfo->ai_socktype, pinfo->ai_protocol);
@@ -96,6 +89,7 @@ socket_open_bind_listen(char * port_number_string, int backlog)
         return s;
     }
 
+    /* If no ipv6 available find an ipv4*/
     for (pinfo = info; pinfo; pinfo = pinfo->ai_next) {
         assert (pinfo->ai_protocol == IPPROTO_TCP);
         int rc = getnameinfo(pinfo->ai_addr, pinfo->ai_addrlen,
@@ -188,4 +182,3 @@ socket_accept_client(int accepting_socket)
     }
     return client;
 }
-

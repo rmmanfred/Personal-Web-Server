@@ -1,11 +1,6 @@
 /*
- * A partial implementation of HTTP/1.0
- *
- * This code is mainly intended as a replacement for the book's 'tiny.c' server
- * It provides a *partial* implementation of HTTP/1.0 which can form a basis for
- * the assignment.
- *
- * @author G. Back for CS 3214 Spring 2018
+ * Handles transactions between web client and web server
+ * Supports HTTP/1.1
  */
 #include <sys/types.h>
 #include <sys/socket.h>
