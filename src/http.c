@@ -45,7 +45,7 @@ http_parse_request(struct http_transaction *ta)
 {
     size_t req_offset;
     ssize_t len = bufio_readline(ta->client->bufio, &req_offset);
-    if (len < 2)       // error, EOF, or less than 2 characters
+    if (len < 2)      
     {
         return false;
     }
@@ -167,7 +167,7 @@ add_content_length(buffer_t *res, size_t len)
 static void
 start_response(struct http_transaction * ta, buffer_t *res)
 {
-    buffer_appends(res, "HTTP/1.1 "); //added (12/8)
+    buffer_appends(res, "HTTP/1.1 ");
 
     switch (ta->resp_status) {
     case HTTP_OK:
@@ -228,7 +228,6 @@ send_response_header(struct http_transaction *ta)
 static bool
 send_response(struct http_transaction *ta)
 {
-    // add content-length.  All other headers must have already been set.
     add_content_length(&ta->resp_headers, ta->resp_body.len);
 
     if (!send_response_header(ta))
@@ -302,8 +301,6 @@ handle_static_asset(struct http_transaction *ta, char *basedir)
     char fname[PATH_MAX];
 
     char *req_path = bufio_offset2ptr(ta->client->bufio, ta->req_path);
-    // The code below is vulnerable to an attack.  Can you see
-    // which?  Fix it to avoid indirect object reference (IDOR) attacks.
     snprintf(fname, sizeof fname, "%s%s", basedir, req_path);
 
     if (access(fname, R_OK)) {
@@ -348,14 +345,10 @@ out:
     return success;
 }
 
+/* Handle HTTP fallback procedure */
 static bool handle_fallback(struct http_transaction *ta, char *basedir, char * fallback)
 {
     char * fname = fallback;
-
-    //char *req_path = bufio_offset2ptr(ta->client->bufio, ta->req_path);
-    // The code below is vulnerable to an attack.  Can you see
-    // which?  Fix it to avoid indirect object reference (IDOR) attacks.
-    //snprintf(fname, sizeof fname, "%s%s", basedir, req_path);
 
     if (access(fname, R_OK)) {
         if (errno == EACCES)
@@ -389,6 +382,7 @@ out:
     return success;
 }
 
+/* Handle HTTP GET & POST requests along with creating authentication tokens.*/
 static int
 handle_api(struct http_transaction *ta)
 {
@@ -488,10 +482,6 @@ http_handle_transaction(struct http_client *self)
         int rc = bufio_read(self->bufio, ta.req_content_len, &ta.req_body);
         if (rc != ta.req_content_len)
             return false;
-
-        // To see the body, use this:
-         /*char *body = bufio_offset2ptr(ta.client->bufio, ta.req_body);
-         hexdump(body, ta.req_content_len);*/
     }
 
     buffer_init(&ta.resp_headers, 1024);
@@ -550,7 +540,8 @@ http_handle_client(struct http_client *self)
 }
 
 /**
- * 
+ * Static method made to return a boolean as to whether or not a HTTP transaction was verifyed and if not
+ * than it handles it appropriately.
  */
 static bool verify(struct http_transaction *ta)
 {
@@ -645,17 +636,16 @@ static bool confirmCredentials(struct http_transaction * ta)
     {
         return false;
     }
-    //parse for gold
     user += 10;
     while (*user != '\"' && *user != '\0')
     {
         user++;
     }
-    if (*user == '\0') //we never hit quotes
+    if (*user == '\0')
     {
         return false;
     }
-    user+=1; //skip quote
+    user+=1; 
     char * martyr;
     strtok_r(user, "\"", &martyr);
     if (strcmp(user, "user0") != 0)
@@ -669,17 +659,16 @@ static bool confirmCredentials(struct http_transaction * ta)
     {
         return false;
     }
-    //parse for gold
     pass += 10;
     while (*pass != '\"' && *pass != '\0')
     {
         pass++;
     }
-    if (*pass == '\0') //we never hit quotes
+    if (*pass == '\0')
     {
         return false;
     }
-    pass+=1; //skip quote
+    pass+=1; 
     char * martyr2;
     strtok_r(pass, "\"", &martyr2);
     if (strcmp(pass, "thepassword") != 0)

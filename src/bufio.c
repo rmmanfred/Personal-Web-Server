@@ -60,14 +60,14 @@ bufio_close(struct bufio * self)
     buffer_delete(&self->buf);
     free(self);
 }
-
+/* Buffers a bufio object from a socket*/
 static ssize_t
 bytes_buffered(struct bufio *self)
 {
     return self->buf.len - self->bufpos;
 }
 
-const int TRUNCATE_THRESHOLD = 10000;       // tune me
+const int TRUNCATE_THRESHOLD = 10000;       
 
 /* 
  * Discard already read data, shifting any buffered data into a new buffer.
@@ -113,7 +113,6 @@ char *
 bufio_offset2ptr(struct bufio *self, size_t offset)
 {
     assert (offset < self->buf.len);
-    //printf("success\n");//Ross added /////////////////////////////////
     return self->buf.buf + offset;
 }
 
@@ -166,7 +165,6 @@ bufio_readline(struct bufio *self, size_t *line_offset)
         if (rc == 0)
             break;
     }
-    //printf("readline: %s\n", self->buf.buf);
     return self->bufpos - *line_offset;
 }
 
@@ -208,6 +206,5 @@ bufio_sendfile(struct bufio *self, int fd, off_t *off, int filesize)
 ssize_t 
 bufio_sendbuffer(struct bufio *self, buffer_t * resp)
 {
-    //printf("send: %s\n", resp->buf); //Ross added (12/8)
     return send(self->socket, resp->buf, resp->len, MSG_NOSIGNAL);
 }

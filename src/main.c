@@ -8,8 +8,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <signal.h>
-#include <pthread.h> //added
-#include <semaphore.h> //added
+#include <pthread.h> 
+#include <semaphore.h> 
 #include "buffer.h"
 #include "hexdump.h"
 #include "http.h"
@@ -36,14 +36,13 @@ int token_expiration_time = 24 * 60 * 60;
 char * server_root;
 
 // limit on threads
-//static int number_of_threads = 4096;
-static int number_of_threads = 14000;
+static int number_of_threads = 4096;
 
 // shared semaphore
 static sem_t hold;
 
 /**
- * 
+ * Handles processing a client 
  */
 static void * connect(void * client)
 {
@@ -55,7 +54,7 @@ static void * connect(void * client)
     sem_post(&hold);
     pthread_exit(NULL);
     return NULL;
-}//*/
+}
 
 /*
  * A non-concurrent, iterative server that serves one client at a time.
@@ -71,16 +70,10 @@ server_loop(char *port_string)
         if (client_socket == -1)
             return;
         struct http_client * client = malloc(sizeof(struct http_client));
-        //new code Ross (12/8)
         client->socket = client_socket;
         pthread_t subject;
         sem_wait(&hold);
         pthread_create(&subject, NULL, connect, client);
-        //http_setup_client(&client, bufio_create(client_socket));
-        //http_setup_client(client, bufio_create(client->socket));
-        //http_handle_client(client);
-        //bufio_close(client->bufio);
-        //free(client);
     }
 }
 
@@ -140,9 +133,9 @@ main(int ac, char *av[])
     signal(SIGPIPE, SIG_IGN);
 
     fprintf(stderr, "Using port %s\n", port_string);
-    sem_init(&hold, 0, number_of_threads); //added
+    sem_init(&hold, 0, number_of_threads);
     server_loop(port_string);
-    sem_destroy(&hold); //added
+    sem_destroy(&hold);
     exit(EXIT_SUCCESS);
 }
 
