@@ -39,7 +39,6 @@ struct http_transaction {
     size_t req_body;        // ditto
     int req_content_len;    // content length of request body
     char * signature; //signed auth
-    char * claim; //auth details
 
     /* response related fields */
     enum http_response_status resp_status;
@@ -56,7 +55,6 @@ struct http_client {
 
 void http_setup_client(struct http_client *, struct bufio *bufio);
 bool http_handle_transaction(struct http_client *);
-//bool http_handle_transaction(struct http_client *, bool *);
 void http_add_header(buffer_t * resp, char* key, char* fmt, ...);
 bool http_handle_client(struct http_client *);
 

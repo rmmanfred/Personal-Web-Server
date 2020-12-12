@@ -46,7 +46,6 @@ http_parse_request(struct http_transaction *ta)
     ssize_t len = bufio_readline(ta->client->bufio, &req_offset);
     if (len < 2)       // error, EOF, or less than 2 characters
     {
-        //printf("EOF\n"); //added by Ross (12/8)
         return false;
     }
 
@@ -86,10 +85,7 @@ http_parse_request(struct http_transaction *ta)
 /* Process HTTP headers. */
 static bool
 http_process_headers(struct http_transaction *ta)
-//http_process_headers(struct http_transaction *ta, bool * dead)
 {
-    //printf("-------------------\n");
-    //printf("body V\n%s, %d\n", bufio_offset2ptr(ta->client->bufio, ta->req_body), ta->req_content_len);
     for (;;) {
         size_t header_offset;
         ssize_t len = bufio_readline(ta->client->bufio, &header_offset);
@@ -113,7 +109,6 @@ http_process_headers(struct http_transaction *ta)
         if (field_name == NULL)
             return false;
 
-        //printf("Header: %s: %s\n", field_name, field_value);
         if (!strcasecmp(field_name, "Content-Length")) {
             ta->req_content_len = atoi(field_value);
         }
@@ -128,9 +123,6 @@ http_process_headers(struct http_transaction *ta)
                 ret += 11;
                 char * token;
                 strtok_r(ret, ";", &token);
-                //printf("sign: %s\n", ret);
-                //memcpy(ta->signature, ret, (strlen(ret)));
-                //ta->signature[strlen(ret)] = '\0';
                 ta->signature = ret;
             }
             else
@@ -174,7 +166,7 @@ add_content_length(buffer_t *res, size_t len)
 static void
 start_response(struct http_transaction * ta, buffer_t *res)
 {
-    buffer_appends(res, "HTTP/1.1 "); //Ross added (12/8)
+    buffer_appends(res, "HTTP/1.1 "); //added (12/8)
 
     switch (ta->resp_status) {
     case HTTP_OK:
@@ -219,8 +211,6 @@ send_response_header(struct http_transaction *ta)
     buffer_t response;
     buffer_init(&response, 80);
 
-    //printf("sending response...\n");
-    //printf("headers\n%s\n", ta->resp_headers.buf);
     start_response(ta, &response);
     if (bufio_sendbuffer(ta->client->bufio, &response) == -1)
         return false;
@@ -245,7 +235,6 @@ send_response(struct http_transaction *ta)
         return false;
     }
 
-    //printf("body\n%s\n", ta->resp_body.buf);
     return bufio_sendbuffer(ta->client->bufio, &ta->resp_body) != -1;
 }
 
@@ -362,38 +351,31 @@ handle_api(struct http_transaction *ta)
             jwt_t *mytoken;
 
             if (jwt_new(&mytoken))
-                perror("jwt_new"), exit(-1);
+                return send_error(ta, HTTP_INTERNAL_ERROR, "Token Creation Failed");
 
             if (jwt_add_grant(mytoken, "sub", "user0"))
-                perror("jwt_add_grant sub"), exit(-1);
+                return send_error(ta, HTTP_INTERNAL_ERROR, "Token Creation Failed2");
 
             time_t now = time(NULL);
             if (jwt_add_grant_int(mytoken, "iat", now))
-                perror("jwt_add_grant iat"), exit(-1);
-
-            //if (jwt_add_grant_int(mytoken, "exp", now + 3600 * 24))
-                //perror("jwt_add_grant exp"), exit(-1);
+                return send_error(ta, HTTP_INTERNAL_ERROR, "Token Creation Failed3");
 
             if (jwt_add_grant_int(mytoken, "exp", now + token_expiration_time))
-                perror("jwt_add_grant exp"), exit(-1);
+                return send_error(ta, HTTP_INTERNAL_ERROR, "Token Creation Failed4");
 
             if (jwt_set_alg(mytoken, JWT_ALG_HS256, 
                     (unsigned char *)NEVER_EMBED_A_SECRET_IN_CODE, strlen(NEVER_EMBED_A_SECRET_IN_CODE)))
-                perror("jwt_set_alg"), exit(-1);
-
-            //printf("dump:\n");
-            /*if (jwt_dump_fp(mytoken, stdout, 1))
-                perror("jwt_dump_fp"), exit(-1);*/
+                return send_error(ta, HTTP_INTERNAL_ERROR, "Token Creation Failed5");
 
             char *encoded = jwt_encode_str(mytoken);
             if (encoded == NULL)
-                perror("jwt_encode_str"), exit(-1);
+                return send_error(ta, HTTP_INTERNAL_ERROR, "Encoding Failed");
 
             ta->resp_status = HTTP_OK;
 
             char *grants = jwt_get_grants_json(mytoken, NULL); // NULL means all
             if (grants == NULL)
-                perror("jwt_get_grants_json"), exit(-1);
+                return send_error(ta, HTTP_INTERNAL_ERROR, "Grant Return Failed");
             
             char newEncode[strlen(encoded) + 20];
             snprintf(newEncode, sizeof(newEncode), "auth-token=%s; Path=/", 
@@ -405,18 +387,14 @@ handle_api(struct http_transaction *ta)
     }
     else if (ta->req_method == HTTP_GET)
     {
-        //ta->resp_status = HTTP_OK;
+        ta->resp_status = HTTP_OK;
         if (!verify(ta))
         {
-            ta->resp_status = HTTP_PERMISSION_DENIED;
             buffer_appends(&ta->resp_body, "{}");
             send_response(ta);
         }  
         else
         {
-            ta->resp_status = HTTP_OK;
-            //buffer_appends(&ta->resp_body, bufio_offset2ptr(ta->client->bufio, 
-                //ta->req_body));
                 jwt_t * decoded;
             jwt_decode(&decoded, ta->signature, 
                 (unsigned char *)NEVER_EMBED_A_SECRET_IN_CODE, 
@@ -428,7 +406,7 @@ handle_api(struct http_transaction *ta)
     }
     else
     {
-        return 0; //unknown request?
+        return send_error(ta, HTTP_METHOD_NOT_ALLOWED, "METHOD NOT SUPPORTED");
     }    
     return 1;
 }
@@ -443,7 +421,6 @@ http_setup_client(struct http_client *self, struct bufio *bufio)
 /* Handle a single HTTP transaction.  Returns true on success. */
 bool
 http_handle_transaction(struct http_client *self)
-//http_handle_transaction(struct http_client *self, bool * dead)
 {
     struct http_transaction ta;
     memset(&ta, 0, sizeof ta);
@@ -452,7 +429,7 @@ http_handle_transaction(struct http_client *self)
     if (!http_parse_request(&ta))
         return false;
 
-    if (!http_process_headers(&ta)) //all calls to dead (12/6)********
+    if (!http_process_headers(&ta))
         return false;
 
     if (ta.req_content_len > 0) {
@@ -477,7 +454,10 @@ http_handle_transaction(struct http_client *self)
     }
     
     if (STARTS_WITH(req_path, "/api")) {
-        rc = handle_api(&ta);
+        if (strcmp(req_path, "/api/login") == 0)
+            rc = handle_api(&ta);
+        else
+            return send_error(&ta, HTTP_NOT_FOUND, "404 NOT FOUND");
     } else if (STARTS_WITH(req_path, "/private")) {
 
         if (ta.req_method == HTTP_POST || ta.req_method == HTTP_UNKNOWN) 
@@ -546,7 +526,6 @@ static bool verify(struct http_transaction *ta)
 
         //exp
         time_t now = time(NULL); //current time
-        //printf("now: %ld\n", now);
         char * check;
         check = strstr(grants, "\"exp\":");
         if (check == NULL)
@@ -556,7 +535,6 @@ static bool verify(struct http_transaction *ta)
         check += 6;
         strtok(check, ",");
         int issue = atoi(check);
-        //printf("exp: %d\n", issue);
         if (issue < (int) now)
         {
             return false;
@@ -572,7 +550,6 @@ static bool verify(struct http_transaction *ta)
         check += 6;
         strtok(check, ",");
         issue = atoi(check);
-        //printf("iat: %d\n", issue);
         if (issue > (int) now)
         {
             return false;
@@ -587,12 +564,10 @@ static bool verify(struct http_transaction *ta)
         }
         check += 7;
         strtok(check, "\"");
-        //printf("sub: %s\n", check);
         if (strcmp("user0", check) != 0)
         {
             return false;
         }
-        //printf("passed\n");
         return true;
     }
 }
@@ -606,14 +581,20 @@ static bool confirmCredentials(struct http_transaction * ta)
     char entry2[strlen(entry)+1];
     memcpy(entry2, entry, (strlen(entry)+1) * sizeof(char));
     
+    //check JSON
+    if (entry[0] != '{' && entry[strlen(entry)] != '}')
+    {
+        return false;
+    }
+
     //isolate user
-    char * user = strstr(entry, "\"username\":");
+    char * user = strstr(entry, "\"username\"");
     if (user == NULL)
     {
         return false;
     }
     //parse for gold
-    user += 11;
+    user += 10;
     while (*user != '\"' && *user != '\0')
     {
         user++;
@@ -622,21 +603,22 @@ static bool confirmCredentials(struct http_transaction * ta)
     {
         return false;
     }
-    user++; //skip quote
+    user+=1; //skip quote
     char * martyr;
     strtok_r(user, "\"", &martyr);
     if (strcmp(user, "user0") != 0)
     {
+        printf("user fail: %s\n", user);
         return false;
     }
 
-    char * pass = strstr(entry2, "\"password\":");
+    char * pass = strstr(entry2, "\"password\"");
     if (pass == NULL)
     {
         return false;
     }
     //parse for gold
-    pass += 11;
+    pass += 10;
     while (*pass != '\"' && *pass != '\0')
     {
         pass++;
@@ -645,11 +627,12 @@ static bool confirmCredentials(struct http_transaction * ta)
     {
         return false;
     }
-    pass++; //skip quote
+    pass+=1; //skip quote
     char * martyr2;
     strtok_r(pass, "\"", &martyr2);
     if (strcmp(pass, "thepassword") != 0)
     {
+        printf("password fail: %s\n", pass);
         return false;
     }
     return true;

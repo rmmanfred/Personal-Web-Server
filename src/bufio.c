@@ -166,6 +166,7 @@ bufio_readline(struct bufio *self, size_t *line_offset)
         if (rc == 0)
             break;
     }
+    //printf("readline: %s\n", self->buf.buf);
     return self->bufpos - *line_offset;
 }
 
@@ -207,6 +208,6 @@ bufio_sendfile(struct bufio *self, int fd, off_t *off, int filesize)
 ssize_t 
 bufio_sendbuffer(struct bufio *self, buffer_t * resp)
 {
-    //printf("%s\n", resp->buf); //Ross added (12/8)
+    //printf("send: %s\n", resp->buf); //Ross added (12/8)
     return send(self->socket, resp->buf, resp->len, MSG_NOSIGNAL);
 }

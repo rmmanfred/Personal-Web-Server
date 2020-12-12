@@ -4,12 +4,12 @@
  * @author Godmar Back
  * written for CS3214, Spring 2018.
  */
-
 #include <getopt.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <signal.h>
-#include <pthread.h> //added by Ross (12/6)
+#include <pthread.h> //added
+#include <semaphore.h> //added
 #include "buffer.h"
 #include "hexdump.h"
 #include "http.h"
@@ -35,9 +35,15 @@ int token_expiration_time = 24 * 60 * 60;
 // root from which static files are served
 char * server_root;
 
+// limit on threads
+static int number_of_threads = 4096;
+
+// shared semaphore
+static sem_t hold;
+
 /**
  * 
- *
+ */
 static void * connect(void * client)
 {
     struct http_client * user = (struct http_client *) client;
@@ -45,6 +51,7 @@ static void * connect(void * client)
     http_handle_client(user);
     bufio_close(user->bufio);
     free(client);
+    sem_post(&hold);
     pthread_exit(NULL);
     return NULL;
 }//*/
@@ -65,13 +72,14 @@ server_loop(char *port_string)
         struct http_client * client = malloc(sizeof(struct http_client));
         //new code Ross (12/8)
         client->socket = client_socket;
-        //pthread_t subject;
-        //pthread_create(&subject, NULL, connect, client);
+        pthread_t subject;
+        sem_wait(&hold);
+        pthread_create(&subject, NULL, connect, client);
         //http_setup_client(&client, bufio_create(client_socket));
-        http_setup_client(client, bufio_create(client->socket));
-        http_handle_client(client);
-        bufio_close(client->bufio);
-        free(client);
+        //http_setup_client(client, bufio_create(client->socket));
+        //http_handle_client(client);
+        //bufio_close(client->bufio);
+        //free(client);
     }
 }
 
@@ -131,7 +139,9 @@ main(int ac, char *av[])
     signal(SIGPIPE, SIG_IGN);
 
     fprintf(stderr, "Using port %s\n", port_string);
+    sem_init(&hold, 0, number_of_threads); //added
     server_loop(port_string);
+    sem_destroy(&hold); //added
     exit(EXIT_SUCCESS);
 }
 
