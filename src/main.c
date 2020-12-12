@@ -36,7 +36,8 @@ int token_expiration_time = 24 * 60 * 60;
 char * server_root;
 
 // limit on threads
-static int number_of_threads = 4096;
+//static int number_of_threads = 4096;
+static int number_of_threads = 14000;
 
 // shared semaphore
 static sem_t hold;

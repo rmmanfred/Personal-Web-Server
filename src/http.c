@@ -37,6 +37,7 @@ static const char * NEVER_EMBED_A_SECRET_IN_CODE = "supa secret2";
 
 static bool verify(struct http_transaction *ta);
 static bool confirmCredentials(struct http_transaction * ta);
+static bool handle_fallback(struct http_transaction *ta, char *basedir, char * fallback);
 
 /* Parse HTTP request line, setting req_method, req_path, and req_version. */
 static bool
@@ -309,6 +310,57 @@ handle_static_asset(struct http_transaction *ta, char *basedir)
         if (errno == EACCES)
             return send_error(ta, HTTP_PERMISSION_DENIED, "Permission denied.");
         else
+        {
+            if (html5_fallback)
+            {
+                return handle_fallback(ta, basedir, "./index.html");
+            }
+        }
+            return send_not_found(ta);
+    }
+
+    // Determine file size
+    struct stat st;
+    int rc = stat(fname, &st);
+    if (rc == -1)
+        return send_error(ta, HTTP_INTERNAL_ERROR, "Could not stat file.");
+
+    int filefd = open(fname, O_RDONLY);
+    if (filefd == -1) {
+        if (html5_fallback)
+        {
+            return handle_fallback(ta, basedir, "./index.html");
+        }
+        return send_not_found(ta);
+    }
+
+    ta->resp_status = HTTP_OK;
+    add_content_length(&ta->resp_headers, st.st_size);
+    http_add_header(&ta->resp_headers, "Content-Type", "%s", guess_mime_type(fname));
+
+    bool success = send_response_header(ta);
+    if (!success)
+        goto out;
+
+    success = bufio_sendfile(ta->client->bufio, filefd, NULL, st.st_size) == st.st_size;
+out:
+    close(filefd);
+    return success;
+}
+
+static bool handle_fallback(struct http_transaction *ta, char *basedir, char * fallback)
+{
+    char * fname = fallback;
+
+    //char *req_path = bufio_offset2ptr(ta->client->bufio, ta->req_path);
+    // The code below is vulnerable to an attack.  Can you see
+    // which?  Fix it to avoid indirect object reference (IDOR) attacks.
+    //snprintf(fname, sizeof fname, "%s%s", basedir, req_path);
+
+    if (access(fname, R_OK)) {
+        if (errno == EACCES)
+            return send_error(ta, HTTP_PERMISSION_DENIED, "Permission denied.");
+        else
             return send_not_found(ta);
     }
 
@@ -395,7 +447,7 @@ handle_api(struct http_transaction *ta)
         }  
         else
         {
-                jwt_t * decoded;
+            jwt_t * decoded;
             jwt_decode(&decoded, ta->signature, 
                 (unsigned char *)NEVER_EMBED_A_SECRET_IN_CODE, 
                 strlen(NEVER_EMBED_A_SECRET_IN_CODE));
