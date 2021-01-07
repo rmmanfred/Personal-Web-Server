@@ -8,7 +8,7 @@ Ross Manfred
 
 ## Execution
 - Note that the totality of this project was a team effort with my partner in the class
-- Made modifications to [socket.c](src/socket.c) to allow for ipv6 and ipv4 under dual binding
+- Made modifications to provided [socket.c](src/socket.c) to allow for ipv6 and ipv4 under dual binding
   - Future implementation may attempt to support the same without dual binding
 - Added the ability to authenticate using JSON Web Tokens when the proper username and password are provided
   - Future implementation may attempt to allow for storage of multiple valid recorded logins stored
@@ -27,6 +27,9 @@ implemented
   - -s: Implements silent mode; extraneous output is suppressed
   - -h: get help on how to properly structure the command
 - Makefile can be used to compile program files
+- Testing used by this class (provided by instructors) are contained in the [tests folder](tests)
+  - server_unit_test_pserv.py can be used to properly verify basic funtionality
+  - server_bench.py tests the ability to handle traffic to the server
 - According to the initial contents of the provided code this command should be run to ensure any user executing this code has the proper dependencies:
 To get started, run the script:
 
